@@ -1,4 +1,4 @@
-Вот markdown-версия документации для GitHub:
+
 
 ```markdown
 # Telegram Bot Control Application / Управление Telegram-ботом
