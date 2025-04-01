@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Управление Telegram ботом</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .panel { background: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+        button { padding: 10px 15px; margin-right: 10px; }
+        #logs { height: 300px; overflow-y: scroll; border: 1px solid #ddd; padding: 10px; }
+        .stats { display: flex; margin: 20px 0; }
+        .stat-box { flex: 1; text-align: center; padding: 15px; background: #eee; margin: 0 10px; }
+    </style>
+</head>
+<body>
+    <h1>Управление Telegram ботом</h1>
+    
+    <div class="panel">
+        <h2>Состояние</h2>
+        <p>Статус: <span id="status">Неактивен</span></p>
+        <button id="startBtn">Запустить</button>
+        <button id="stopBtn" disabled>Остановить</button>
+        <button id="runProgramBtn">Запустить программу</button>
+    </div>
+    
+    <div class="panel">
+        <h2>Конфигурация</h2>
+        <div id="configForm">
+            <label>Номер телефона: <input type="text" id="phone"></label><br>
+            <label>Получатель: <input type="text" id="target"></label><br>
+            <label>Сообщения (через запятую): <textarea id="messages"></textarea></label><br>
+            <label>Задержка (сек): <input type="number" id="delay"></label><br>
+            <button id="saveConfig">Сохранить</button>
+        </div>
+    </div>
+    
+    <div class="stats">
+        <div class="stat-box">
+            <h3>Отправлено</h3>
+            <p id="sent">0</p>
+        </div>
+        <div class="stat-box">
+            <h3>Успешно</h3>
+            <p id="success">0</p>
+        </div>
+        <div class="stat-box">
+            <h3>Ошибки</h3>
+            <p id="failed">0</p>
+        </div>
+    </div>
+    
+    <canvas id="statsChart" width="400" height="200"></canvas>
+    
+    <div class="panel">
+        <h2>Логи</h2>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let statsChart;
+        
+        // Инициализация графика
+        function initChart() {
+            const ctx = document.getElementById('statsChart').getContext('2d');
+            statsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Отправлено', 'Успешно', 'Ошибки'],
+                    datasets: [{
+                        label: 'Статистика',
+                        data: [0, 0, 0],
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.5)',
+                            'rgba(75, 192, 192, 0.5)',
+                            'rgba(255, 99, 132, 0.5)'
+                        ],
+                        borderColor: [
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(255, 99, 132, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+        
+        // Обновление интерфейса
+        function updateUI(data) {
+            document.getElementById('status').textContent = 
+                data.running ? 'Активен' : 'Неактивен';
+                
+            document.getElementById('startBtn').disabled = data.running;
+            document.getElementById('stopBtn').disabled = !data.running;
+            
+            document.getElementById('sent').textContent = data.stats.sent;
+            document.getElementById('success').textContent = data.stats.success;
+            document.getElementById('failed').textContent = data.stats.failed;
+            
+            if (statsChart) {
+                statsChart.data.datasets[0].data = [
+                    data.stats.sent,
+                    data.stats.success,
+                    data.stats.failed
+                ];
+                statsChart.update();
+            }
+            
+            const logsDiv = document.getElementById('logs');
+            logsDiv.innerHTML = data.logs.map(log => 
+                `<div>${log}</div>`
+            ).join('');
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+        
+        // Загрузка конфигурации
+        function loadConfig() {
+            fetch('/config')
+                .then(r => r.json())
+                .then(config => {
+                    document.getElementById('phone').value = config.phone;
+                    document.getElementById('target').value = config.target;
+                    document.getElementById('messages').value = config.messages.join(', ');
+                    document.getElementById('delay').value = config.delay;
+                });
+        }
+        
+        // Сохранение конфигурации
+        function saveConfig() {
+            const config = {
+                phone: document.getElementById('phone').value,
+                target: document.getElementById('target').value,
+                messages: document.getElementById('messages').value.split(',').map(s => s.trim()),
+                delay: parseInt(document.getElementById('delay').value)
+            };
+            
+            fetch('/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+        }
+        
+        // Управление ботом
+        document.getElementById('startBtn').addEventListener('click', () => {
+            fetch('/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'start' })
+            });
+        });
+
+        document.getElementById('runProgramBtn').addEventListener('click', () => {
+    fetch('/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start' })
+    }).then(() => {
+        alert('Программа запущена!');
+    });
+});
+        
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            fetch('/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'stop' })
+            });
+        });
+        
+        document.getElementById('saveConfig').addEventListener('click', saveConfig);
+        
+        // WebSocket обновления
+        socket.on('update', updateUI);
+        
+        // Инициализация
+        initChart();
+        loadConfig();
+        fetch('/logs').then(r => r.json()).then(data => {
+            bot_state.logs = data.logs;
+            updateUI(bot_state);
+        });
+    </script>
+</body>
+</html>
